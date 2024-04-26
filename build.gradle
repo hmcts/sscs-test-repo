@@ -1,0 +1,612 @@
+plugins {
+    id 'application'
+    id 'pmd'
+    id 'org.sonarqube' version '4.3.0.3225'
+    id 'jacoco'
+    id 'org.springframework.boot' version '2.7.18'
+    id 'uk.gov.hmcts.java' version '0.12.43'
+    id 'com.gorylenko.gradle-git-properties' version '2.4.1'
+    id 'com.github.ben-manes.versions' version '0.46.0'
+    id "info.solidsoft.pitest" version '1.9.11'
+    id 'org.owasp.dependencycheck' version '9.0.6'
+    id 'au.com.dius.pact' version '4.3.15'
+    id 'com.github.hmcts.rse-cft-lib' version '0.19.771'
+}
+
+apply plugin: 'org.springframework.boot'
+apply plugin: 'io.spring.dependency-management'
+apply plugin: "info.solidsoft.pitest"
+
+gitProperties {
+    gitPropertiesDir = new File("${project.rootDir}/src/main/resources/uk/gov/hmcts/reform/sscs")
+    keys = ['git.commit.id', 'git.commit.time']
+    dateFormat = "yyyy-MM-dd'T'HH:mmZ"
+    dateFormatTimeZone = "GMT"
+}
+
+
+group = 'uk.gov.hmcts.reform'
+version = '1.0.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+compileJava {
+    options.compilerArgs << '-parameters' << '-Xlint:deprecation' << "-Xlint:unchecked"
+}
+
+compileTestJava {
+    options.compilerArgs << '-Xlint:deprecation'
+}
+
+tasks.withType(Copy).all { duplicatesStrategy 'warn' }
+
+mainClassName = 'uk.gov.hmcts.reform.sscs.TribunalsCaseApiApplication'
+
+pmd {
+    toolVersion = "6.55.0"
+    ignoreFailures = true
+    sourceSets = [sourceSets.main, sourceSets.test]
+    reportsDir = file("$project.buildDir/reports/pmd")
+    ruleSetFiles = files("config/pmd/ruleset.xml")
+}
+
+sourceSets {
+    integrationTest {
+        java {
+            compileClasspath += main.output + test.output
+            runtimeClasspath += main.output + test.output
+            srcDir('src/IntegrationTests/java')
+        }
+        resources {
+            srcDir('src/IntegrationTests/resources')
+        }
+    }
+    functionalTest {
+        java {
+            compileClasspath += main.output + test.output
+            runtimeClasspath += main.output + test.output
+            srcDir('src/functionalTest/java')
+        }
+    }
+    contractTest {
+        java {
+            compileClasspath += main.output
+            runtimeClasspath += main.output
+            srcDir file('src/contractTest/java')
+        }
+        resources.srcDir file('src/contractTest/resources')
+    }
+}
+
+dependencies {
+    integrationTestImplementation(sourceSets.test.output)
+    functionalTestImplementation(sourceSets.test.output)
+}
+
+tasks.withType(Test) {
+    useJUnitPlatform()
+
+    testLogging {
+        exceptionFormat = 'full'
+    }
+}
+
+task integration(type: Test) {
+    jvmArgs = ['-Xms1024m', '-Xmx2048m']
+    setTestClassesDirs(sourceSets.integrationTest.output.classesDirs)
+    setClasspath(sourceSets.integrationTest.runtimeClasspath)
+}
+
+task functional(type: Test) {
+    group = 'Functional Tests'
+    description = 'Executes non-destructive functional tests in AAT against a running CCD and notification service'
+    setTestClassesDirs(sourceSets.functionalTest.output.classesDirs)
+    setClasspath(sourceSets.functionalTest.runtimeClasspath)
+    include "uk/gov/hmcts/reform/sscs/functional/**"
+    exclude "uk/gov/hmcts/reform/sscs/smoke/**"
+}
+
+task smoke(type: Test) {
+    group = 'verification'
+    description = 'Executes non-destructive smoke tests against a running Tribual Case API'
+    setTestClassesDirs(sourceSets.functionalTest.output.classesDirs)
+    setClasspath(sourceSets.functionalTest.runtimeClasspath)
+    include "uk/gov/hmcts/reform/sscs/smoke/**"
+    exclude "uk/gov/hmcts/reform/sscs/functional/**"
+}
+
+task contract(type: Test, description: 'Runs the pact contract tests.', group: 'Verification') {
+    description = "Runs the consumer Pact tests"
+    useJUnitPlatform()
+    testClassesDirs = sourceSets.contractTest.output.classesDirs
+    classpath = sourceSets.contractTest.runtimeClasspath
+}
+
+task fortifyScan(type: JavaExec)  {
+    main = "uk.gov.hmcts.fortifyclient.FortifyClientMainApp"
+    classpath += sourceSets.test.runtimeClasspath
+    jvmArgs = ['--add-opens=java.base/java.lang.reflect=ALL-UNNAMED']
+}
+
+jacoco {
+    toolVersion = "0.8.10"
+}
+
+jacocoTestReport {
+    executionData(test, integration)
+    reports {
+        xml.required = true
+        csv.required = false
+        xml.destination file("${project.buildDir}/reports/jacoco/test/jacocoTestReport.xml")
+    }
+}
+
+dependencyUpdates.resolutionStrategy = {
+    componentSelection { rules ->
+        rules.all {
+            def isNonStable = { String version ->
+                def stableKeyword = ['RELEASE', 'FINAL', 'GA'].any { qualifier -> version.toUpperCase().contains(qualifier) }
+                def regex = /^[0-9,.v-]+(-r)?$/
+                return !stableKeyword && !(version ==~ regex)
+            }
+            if (isNonStable(candidate.version) && !isNonStable(currentVersion)) {
+                selection.reject('Release candidate')
+            }
+        }
+    }
+}
+
+// https://jeremylong.github.io/DependencyCheck/dependency-check-gradle/configuration.html
+dependencyCheck {
+    // Specifies if the build should be failed if a CVSS score above a specified level is identified.
+    // range of 7-10 fails the build, anything lower and it doesn't fail the build
+    failBuildOnCVSS = System.getProperty('dependencyCheck.failBuild', 'true') == 'true' ? 7.0 : 11
+    suppressionFile = 'config/owasp/suppressions.xml'
+
+    nvd.validForHours = 24
+
+    analyzers {
+        retirejs {
+            enabled = false
+        }
+        ossIndex {
+            enabled = false
+        }
+    }
+}
+
+repositories {
+
+    mavenLocal()
+    mavenCentral()
+
+    // jitpack should be last resort
+    // see: https://github.com/jitpack/jitpack.io/issues/1939
+    maven { url 'https://jitpack.io' }
+    // Requires authentication, if it gets here the library cannot be found!
+    maven {
+        url 'https://repo.spring.io/libs-milestone'
+    }
+}
+
+processResources.dependsOn(generateGitProperties)
+
+project.tasks['sonarqube'].dependsOn test, integration, jacocoTestReport
+check.dependsOn integration
+checkstyleMain.shouldRunAfter(compileJava)
+test.shouldRunAfter(checkstyleTest)
+integration.shouldRunAfter(checkstyleIntegrationTest)
+integration.shouldRunAfter(test)
+
+sonarqube {
+    properties {
+        property "sonar.projectName", "SSCS - Tribunals Case Api"
+        property "sonar.projectKey", "SSCSTCA"
+        property "sonar.coverage.jacoco.xmlReportPaths", "${project.buildDir}/reports/jacoco/test/jacocoTestReport.xml"
+        property "sonar.exclusions", "**/CreateCaseException.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/domain/**," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/evidenceshare/domain/**," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/TribunalsCaseApiApplication.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/email/Email.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/config/*," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/model/**/*.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/evidenceshare/model/**/*.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/service/EvidenceUploadService.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/service/OnlineHearingService.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/service/pdf/data/EvidenceDescriptionPdfData.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/service/pdf/StoreAppellantStatementService.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/service/pdf/StorePdfService.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/service/servicebus/SessionAwareServiceBusMessagingService.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/service/coversheet/PdfCoverSheet.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/controllers/CreateCaseController.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/service/pdf/data/PdfData.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/ccd/presubmit/writefinaldecision/esa/EsaWriteFinalDecisionMidEventValidationHandler.java," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/evidenceshare/config/**," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/service/servicebus/messaging/**," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/docmosis/domain/**," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/docmosis/config/**," +
+                "src/main/java/uk/gov/hmcts/reform/sscs/EnvironmentPropertiesPrinter.java,"
+        property "sonar.host.url", "https://sonar.reform.hmcts.net/"
+        property "sonar.pitest.mode", "reuseReport"
+        property "sonar.pitest.reportsDirectory", "build/reports/pitest"
+    }
+}
+
+configurations {
+    integrationTestImplementation.extendsFrom(testImplementation)
+    integrationTestRuntimeOnly.extendsFrom(testRuntimeOnly)
+    functionalTestImplementation.extendsFrom(testImplementation)
+    functionalTestRuntimeOnly.extendsFrom(testRuntimeOnly)
+    contractTestImplementation.extendsFrom(testImplementation)
+    contractTestRuntimeOnly.extendsFrom(testRuntimeOnly)
+}
+
+task installLocalGitHook(type: Copy) {
+    from new File(rootProject.rootDir, 'config/git/pre-commit')
+    into { new File(rootProject.rootDir, '.git/hooks')}
+    fileMode 0775
+}
+
+compileJava.dependsOn installLocalGitHook
+
+task runGitPreCommitTasks {
+    dependsOn 'test'
+    dependsOn 'pmdMain'
+    dependsOn 'pmdTest'
+    dependsOn 'checkstyleMain'
+    dependsOn 'checkstyleTest'
+}
+
+dependencyManagement {
+    dependencies {
+        //CVE-2022-25857
+        dependencySet(group: 'org.yaml', version: '2.0') {
+            entry 'snakeyaml'
+        }
+
+        //CVE-2023-33202
+        dependencySet(group: 'org.springframework.security', version: '1.1.1') {
+            entry 'spring-security-rsa'
+        }
+
+        //CVE-2023-6378, CVE-2023-6481
+        dependencySet(group: 'ch.qos.logback', version: '1.2.13') {
+            entry 'logback-core'
+            entry 'logback-classic'
+        }
+
+        imports {
+            mavenBom "org.springframework.cloud:spring-cloud-dependencies:2021.0.8"
+        }
+    }
+}
+
+dependencies {
+    implementation group: 'org.springframework.boot', name: 'spring-boot-autoconfigure'
+    implementation group: 'org.springframework.boot', name: 'spring-boot-starter'
+    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-web'
+    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-actuator'
+    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-aop'
+    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-validation'
+    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-mail'
+    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-activemq'
+    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-security'
+
+    implementation group: 'org.springframework.security', name: 'spring-security-core', version: '5.8.10'
+    implementation group: 'org.springframework.security', name: 'spring-security-crypto', version: '5.8.10'
+    implementation group: 'org.springframework.security', name: 'spring-security-config', version: '5.8.10'
+    implementation group: 'org.springframework.security', name: 'spring-security-web', version: '5.8.10'
+
+    implementation group: 'org.springframework.cloud', name: 'spring-cloud-starter-openfeign'
+    implementation group: 'org.springframework.retry', name: 'spring-retry', version: '1.3.4'
+    implementation group: 'javax.annotation', name: 'javax.annotation-api', version: '1.3.2'
+    implementation group: 'org.postgresql', name: 'postgresql', version: '42.7.3'
+
+    implementation group: 'com.google.guava', name: 'guava', version: '32.1.1-jre'
+    implementation group: 'org.elasticsearch', name: 'elasticsearch', version: '7.17.19'
+
+    implementation group: 'com.github.hmcts', name: 'service-auth-provider-java-client', version: '4.1.2'
+    implementation group: 'com.github.hmcts', name: 'idam-java-client', version: '2.1.1'
+    implementation group: 'com.github.hmcts', name: 'ccd-client', version: '4.9.2'
+
+    implementation group: 'net.objectlab.kit', name: 'datecalc-jdk8', version: '1.4.8'
+
+    implementation group: 'org.springdoc', name: 'springdoc-openapi-ui', version: '1.7.0'
+
+    implementation group: 'io.github.openfeign', name: 'feign-httpclient', version: '12.4'
+    implementation group: 'com.squareup.okhttp3', name: 'okhttp', version: '4.11.0'
+    implementation group: 'com.squareup.okio', name: 'okio-jvm', version: '3.5.0'
+
+    implementation group: 'com.github.hmcts', name: 'auth-checker-lib', version: '2.1.5'
+    implementation group: 'com.github.hmcts', name: 'properties-volume-spring-boot-starter', version: '0.1.1'
+
+    implementation group: 'net.logstash.logback', name: 'logstash-logback-encoder', version: '7.4'
+
+    implementation group: 'com.github.hmcts', name: 'java-logging', version: '6.0.1'
+    implementation group: 'com.github.hmcts', name: 'doc-assembly-client', version: '1.07'
+    implementation group: 'com.github.hmcts', name: 'ccd-case-document-am-client', version: '1.7.3'
+    //remove when secure doc store is live
+    implementation group: 'com.github.hmcts', name: 'document-management-client', version: '7.0.0'
+    implementation group: 'com.github.hmcts', name: 'cmc-pdf-service-client', version: '7.0.1'
+
+    implementation group: 'com.github.hmcts', name: 'sscs-common', version: '5.4.0'
+    implementation group: 'com.github.hmcts', name: 'sscs-pdf-email-common', version: '5.2.5'
+
+    implementation group: 'com.azure', name: 'azure-core', version: '1.46.0'
+    implementation group: 'com.azure', name: 'azure-messaging-servicebus', version: '7.15.1'
+
+    implementation group: 'io.projectreactor', name: 'reactor-core', version: '3.5.8'
+
+    implementation group:'org.overviewproject', name: 'mime-types', version: '1.0.4'
+
+    // https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-core
+    implementation group: 'com.fasterxml.jackson.core', name: 'jackson-core', version: '2.14.3'
+    // https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind
+    implementation group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.14.3'
+
+    implementation group:'javax.xml.bind', name: 'jaxb-api', version: '2.3.1'
+    implementation group: 'org.springframework', name: 'spring-jms'
+    implementation group: 'org.apache.qpid', name: 'qpid-jms-client', version: '1.10.0'
+
+    implementation group: 'org.pitest', name: 'pitest', version:  '1.14.2'
+    implementation group:'info.solidsoft.gradle.pitest', name: 'gradle-pitest-plugin', version: '1.9.11'
+    implementation group:'org.codehaus.sonar-plugins', name:'sonar-pitest-plugin', version: '0.5'
+
+    testImplementation group: 'io.rest-assured', name: 'rest-assured', version: '5.3.1'
+    testImplementation group: 'io.rest-assured', name: 'xml-path', version: '5.3.1'
+    testImplementation group: 'io.rest-assured', name: 'json-path', version: '5.3.1'
+    testImplementation group: 'com.github.hmcts', name: 'fortify-client', version: '1.3.0', classifier: 'all', {
+        exclude group: 'commons-io', module: 'commons-io'
+    }
+
+    implementation group: 'commons-io', name: 'commons-io', version:  '2.13.0'
+
+    implementation group: 'org.apache.commons', name: 'commons-collections4', version: '4.4'
+    implementation group: 'org.apache.commons', name: 'commons-text', version: '1.10.0'
+    implementation group: 'org.apache.pdfbox', name: 'xmpbox', version: '2.0.29'
+    implementation group: 'org.apache.pdfbox', name: 'pdfbox', version: '2.0.29'
+    implementation group: 'org.apache.tika', name: 'tika-core', version: '2.8.0'
+    implementation group: 'org.apache.tika', name: 'tika-parsers', version: '2.8.0'
+
+    implementation group: 'org.json', name: 'json', version: '20240205'
+
+    implementation group: 'com.opencsv', name: 'opencsv', version: '5.7.1'
+
+    implementation group: "com.networknt", name: "json-schema-validator", version: "1.0.81"
+
+    implementation group: 'org.apache.tomcat.embed', name: 'tomcat-embed-core', version: '9.0.86'
+    implementation group: 'org.apache.tomcat.embed', name: 'tomcat-embed-websocket', version: '9.0.86'
+
+    //evidence-share depenedencies
+    implementation group: 'com.github.hmcts', name: 'cmc-pdf-service-client', version: '7.0.1'
+    implementation group: 'com.github.hmcts', name: 'send-letter-client', version: '3.0.23'
+    // Remove this dependency once the secure doc-store is in use
+    implementation group: 'com.github.hmcts', name: 'document-management-client', version: '7.0.1'
+    implementation group: 'com.launchdarkly', name: 'launchdarkly-java-server-sdk', version: '6.2.1'
+
+    integrationTestImplementation group: 'commons-io', name: 'commons-io', version:  '2.13.0'
+
+    functionalTestImplementation group: 'commons-io', name: 'commons-io', version:  '2.13.0'
+
+    implementation group: 'org.projectlombok', name: 'lombok', version: '1.18.28'
+    annotationProcessor group: 'org.projectlombok', name: 'lombok', version: '1.18.28'
+
+    testImplementation group: 'org.springframework.boot', name: 'spring-boot-starter-test', {
+        exclude group: 'com.vaadin.external.google', module: 'android-json'
+    }
+
+    testImplementation group: 'org.apache.httpcomponents', name: 'fluent-hc', version:  '4.5.14'
+
+    testImplementation group: 'com.azure', name: 'azure-core', version: '1.46.0'
+    testImplementation group: 'com.azure', name: 'azure-messaging-servicebus', version: '7.15.1'
+
+    testImplementation group: 'org.mockito', name: 'mockito-core', version: '4.11.0'
+    testImplementation group: 'net.javacrumbs.json-unit', name: 'json-unit', version: '2.37.0'
+    testImplementation group: 'org.mockito', name: 'mockito-junit-jupiter', version: '4.11.0'
+    testImplementation group: 'net.javacrumbs.json-unit', name: 'json-unit-fluent', version: '2.37.0'
+
+    testImplementation group: 'io.github.artsok', name: 'rerunner-jupiter', version: '2.1.6'
+
+    // https://mvnrepository.com/artifact/net.bytebuddy/byte-buddy-dep
+    testImplementation group: 'net.bytebuddy', name: 'byte-buddy-dep', version: '1.14.5'
+
+
+    testImplementation group: 'pl.pragmatists', name: 'JUnitParams', version: '1.1.1'
+
+    testImplementation group: 'org.projectlombok', name: 'lombok', version: '1.18.28'
+    testAnnotationProcessor group: 'org.projectlombok', name: 'lombok', version: '1.18.28'
+    functionalTestImplementation group: 'org.projectlombok', name: 'lombok', version: '1.18.28'
+    functionalTestAnnotationProcessor group: 'org.projectlombok', name: 'lombok', version: '1.18.28'
+    integrationTestAnnotationProcessor group: 'org.projectlombok', name: 'lombok', version: '1.18.28'
+
+    testImplementation platform(group: 'org.junit', name: 'junit-bom', version: '5.9.3')
+    testImplementation group: 'org.junit.jupiter', name: 'junit-jupiter'
+    testImplementation group: 'org.junit.vintage', name: 'junit-vintage-engine'
+    testImplementation group: 'com.h2database', name: 'h2', version: '2.1.214'
+
+    testImplementation group: 'org.assertj', name: 'assertj-core', version: '3.24.2'
+    // https://mvnrepository.com/artifact/org.awaitility/awaitility
+    testImplementation group: 'org.awaitility', name: 'awaitility', version: '4.2.0'
+
+    testImplementation group: 'org.apache.qpid', name: 'qpid-broker-core', version: '8.0.6'
+    testImplementation group: 'org.apache.qpid', name: 'qpid-broker-plugins-amqp-1-0-protocol', version: '8.0.6'
+    testImplementation group: 'org.apache.qpid', name: 'qpid-broker-plugins-memory-store', version: '8.0.6'
+    //pact contract testing
+    contractTestImplementation group: 'au.com.dius.pact.consumer', name: 'junit5', version: '4.3.15'
+
+    contractTestImplementation group: 'org.springframework.boot', name: 'spring-boot-starter-test', version: '2.7.14'
+
+    contractTestImplementation sourceSets.main.runtimeClasspath
+    contractTestImplementation sourceSets.test.runtimeClasspath
+
+    cftlibImplementation group: 'org.springframework.boot', name: 'spring-boot-devtools'
+    cftlibAnnotationProcessor group: 'org.projectlombok', name: 'lombok', version: '1.18.28'
+
+}
+// this is required to force Java running on the Azure Windows Server OS into using
+// UTF-8 as the default character set instead of windows-1252 which causes issues
+applicationDefaultJvmArgs = ["-Dfile.encoding=UTF-8"]
+
+bootJar {
+    archiveName 'tribunals-case-api.jar'
+    manifest {
+        attributes 'Implementation-Title': project.name,
+                'Implementation-Version': project.version
+    }
+}
+
+jacocoTestReport {
+    executionData(test, integration)
+    reports {
+        xml.required = true
+        csv.required = false
+    }
+}
+
+pitest {
+    targetClasses = ['uk.gov.hmcts.reform.sscs.service.*']
+    excludedClasses = ['uk.gov.hmcts.reform.sscs.config.*',
+                       'uk.gov.hmcts.reform.sscs.builder.*',
+                       'uk.gov.hmcts.reform.sscs.domain.*',
+                       'uk.gov.hmcts.reform.sscs.exception.*',
+                       'uk.gov.hmcts.reform.sscs.healthcheck.*',
+                       'uk.gov.hmcts.reform.sscs.model.*',
+                       'uk.gov.hmcts.reform.sscs.transform.*',
+                       'uk.gov.hmcts.reform.sscs.TribunalsCaseApiApplication']
+    excludedMethods = ['equals', 'hashcode']
+    jvmArgs = ['-Xms1G','-Xmx3G']
+    enableDefaultIncrementalAnalysis = true
+    historyInputLocation = 'build/reports/pitest/fastermutationtesting'
+    historyOutputLocation = 'build/reports/pitest/fastermutationtestingoutput'
+    threads = 20
+    verbose = true
+    outputFormats = ['XML', 'HTML']
+    timestampedReports = false
+    mutationThreshold = 50
+}
+
+project.ext {
+    pacticipant = 'sscs_tribunalsCaseApi'
+    pacticipantVersion = getCheckedOutGitCommitHash()
+}
+
+task runAndPublishConsumerPactTests(type: Test){
+    logger.lifecycle("Runs pact Tests")
+    testClassesDirs = sourceSets.contractTest.output.classesDirs
+    classpath = sourceSets.contractTest.runtimeClasspath
+
+}
+
+task getSscsCommonVersion{
+    doLast {
+        print '4.18.0'
+    }
+}
+
+runAndPublishConsumerPactTests.dependsOn contract
+
+runAndPublishConsumerPactTests.finalizedBy pactPublish
+
+pact {
+    broker {
+        pactBrokerUrl = System.getenv("PACT_BROKER_FULL_URL") ?: 'http://localhost:80'
+    }
+    publish {
+        pactDirectory = 'pacts'
+        tags = [System.getenv("PACT_BRANCH_NAME") ?:'Dev']
+        version = project.pacticipantVersion
+    }
+}
+
+
+static def getCheckedOutGitCommitHash() {
+    'git rev-parse --verify --short HEAD'.execute().text.trim()
+}
+
+run {
+    def debug = System.getProperty("debug")
+    if (debug == 'true') {
+        jvmArgs = ['-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5006']
+    }
+}
+
+
+task generateXls(type: Exec) {
+    commandLine project.file('../sscs-ccd-definitions/bin/create-xlsx.sh').path, 'benefit', 'dev', 'local'
+    inputs.dir project.file('../sscs-ccd-definitions/benefit')
+    outputs.dir project.file('../sscs-ccd-definitions/releases')
+    environment "TRIBUNALS_API_URL", "http://localhost:8080"
+    workingDir project.file('../sscs-ccd-definitions').path
+}
+
+bootWithCCD {
+    dependsOn generateXls
+    authMode = uk.gov.hmcts.rse.AuthMode.Local
+
+    //---Debug-----
+    //Uncomment to launch with debug
+    //jvmArgs = ['-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5006']
+
+    //---Extra ccd loging----
+    //Uncomment for ccd callback logging
+    //environment 'LOG_CALLBACK_DETAILS', '*'
+
+    //---Additional compose services---
+    //Place any extra compose files you'd like to be started automatically here. These should be
+    //in the folder /src/cftlib/resources/docker/ and comma delimited.
+    environment 'ADDITIONAL_COMPOSE_FILES', 'cft-lib-activemq.yml,cft-lib-doc-stack.yml,cft-lib-doc-assembly.yml,cft-lib-ref-data-wiremock.yml,cft-lib-em-stack.yml'
+    environment 'ADDITIONAL_COMPOSE_FILES_WA', 'cft-lib-work-allocation.yml'
+    environment 'ENABLE_WORK_ALLOCATION', 'false'
+
+    //Turn this on to automatically recreate containers above. Useful for debugging if you make changes.
+    environment 'FORCE_RECREATE_ADDITIONAL_CONTAINERS', 'false'
+
+    environment 'XUI_PORT', '3455'
+    environment 'RSE_LIB_S2S_PORT', '4502'
+    //URLs for services running in Docker require host.docker.internal to resolve properly
+    environment 'XUI_DOCUMENTS_API', 'http://host.docker.internal:5005'
+    environment 'XUI_DOCUMENTS_API_V2', 'http://host.docker.internal:4455'
+    environment 'IDAM_SIMULATOR_BASE_URL', 'http://rse-idam-simulator:5062'
+    //URLs for other services can resolve localhost
+    environment 'DM_STORE_BASE_URL', 'http://localhost:5005'
+    environment 'S2S_URL', 'http://localhost:4502'
+    environment 'DOC_ASSEMBLY_URL', 'http://localhost:4631'
+    environment 'RSE_LIB_ADDITIONAL_DATABASES', 'emstitch,ccd_data,camunda,cft_task_db,sscsjobscheduler,evidence,wa_case_event_messages_db,wa_workflow_api'
+    environment 'CCD_DOCUMENT_URL_PATTERN', '.*'
+    environment 'CASE_DOCUMENT_S2S_AUTHORISED_SERVICES', 'ccd_case_document_am_api,ccd_gw,xui_webapp,ccd_data,bulk_scan_processor,sscs,wa_task_management_api,wa_task_monitor,camunda_bpm,wa_workflow_api,wa_case_event_handler,em_stitching_api'
+    environment 'DATA_STORE_S2S_AUTHORISED_SERVICES', 'ccd_gw,ccd_data,ccd_ps,payment-api,xui_webapp,sscs,ccd_case_document_am_api,am_role_assignment_service,em_ccd_orchestrator,em_stitching_api,wa_task_management_api,wa_task_monitor,camunda_bpm,wa_workflow_api,wa_case_event_handler'
+
+    //Wiremock
+    environment 'RD_LOCATION_REF_API_URL', 'http://localhost:8084'
+
+    // Features
+    environment 'GAPS_SWITCHOVER_FEATURE', 'true'
+    environment 'CASE_ACCESS_MANAGEMENT_FEATURE', 'true'
+
+    // Local Queue
+    environment 'JMS_NAMESPACE', 'localhost:5672'
+    environment 'JMS_HEARINGS_EVENT_QUEUE_NAME', 'tribunals-to-hearings-queue'
+    environment 'JMS_AMQP_CONNECTION_TEMPLATE', 'amqp://%1s?amqp.idleTimeout=%2d'
+    environment 'ENABLE_JMS', 'true'
+
+    // logger
+    def fileLogger = [ onOutput: {
+        File logfile = new File('gradle-build.log')
+        logfile << it
+    }
+    ] as org.gradle.api.logging.StandardOutputListener
+
+    logging.addStandardOutputListener(fileLogger)
+
+    gradle.taskGraph.whenReady { taskGraph ->
+        taskGraph.allTasks.each { Task t ->
+            t.doFirst {
+                logging.addStandardOutputListener(fileLogger)
+            }
+        }
+    }
+}

@@ -1,0 +1,147 @@
+#!groovy
+properties([
+        [$class: 'GithubProjectProperty', projectUrlStr: 'https://github.com/hmcts/tribunals-case-api'],
+        pipelineTriggers([[$class: 'GitHubPushTrigger']])
+])
+
+@Library("Infrastructure")
+
+import uk.gov.hmcts.contino.AppPipelineDsl
+import uk.gov.hmcts.contino.GithubAPI
+import uk.gov.hmcts.contino.GradleBuilder
+
+def type = "java"
+def product = "sscs"
+def component = "test"
+
+def gradleBuilder = new GradleBuilder(this, product)
+
+def secrets = [
+    'sscs-${env}'      : [
+        secret('idam-api', 'IDAM_API_URL'),
+        secret('idam-oauth-user', 'IDAM_OAUTH2_CLIENT_ID'),
+        secret('idam-redirect', 'IDAM_OAUTH2_REDIRECT_URL'),
+        secret('idam-sscs-systemupdate-user', 'IDAM_SSCS_SYSTEMUPDATE_USER'),
+        secret('idam-sscs-systemupdate-password', 'IDAM_SSCS_SYSTEMUPDATE_PASSWORD'),
+        secret('idam-sscs-oauth2-client-secret', 'IDAM_OAUTH2_CLIENT_SECRET'),
+        secret('idam-s2s-api', 'IDAM_S2S_AUTH'),
+        secret('ccd-api', 'CORE_CASE_DATA_API_URL'),
+        secret('ccd-jid', 'CORE_CASE_DATA_JURISDICTION_ID'),
+        secret('ccd-tid', 'CORE_CASE_DATA_CASE_TYPE_ID'),
+        secret('sscs-s2s-secret', 'IDAM_S2S_AUTH_TOTP_SECRET'),
+        secret('s2s-micro', 'IDAM_S2S_AUTH_MICROSERVICE'),
+        secret('docmosis-endpoint', 'PDF_SERVICE_CONVERT_URL'),
+        secret('docmosis-api-key', 'PDF_SERVICE_ACCESS_KEY'),
+        secret('AppInsightsInstrumentationKey', 'APPINSIGHTS_INSTRUMENTATIONKEY'),
+        secret('robotics-email-from', 'ROBOTICS_EMAIL_FROM'),
+        secret('robotics-email-to', 'ROBOTICS_EMAIL_TO'),
+        secret('robotics-email-scottish-to', 'ROBOTICS_EMAIL_SCOTTISH_TO'),
+        secret('robotics-email-pip-ae-to', 'ROBOTICS_EMAIL_PIP_AE_TO'),
+        secret('AppInsightsInstrumentationKey', 'APPINSIGHTS_INSTRUMENTATIONKEY'),
+    ],
+    's2s-${env}'      : [
+            secret('microservicekey-ccd-gw', 'CCD_API_GATEWAY_S2S_SECRET'),
+            secret('microservicekey-ccd-data', 'CCD_DATA_STORE_S2S_SECRET'),
+            secret('microservicekey-ccd-definition', 'CCD_DEFINITION_STORE_S2S_SECRET')
+    ],
+    'ccd-${env}'      : [
+            secret('ccd-api-gateway-oauth2-client-secret', 'CCD_API_GATEWAY_IDAM_CLIENT_SECRET'),
+            secret('postcode-info-address-lookup-token', 'ADDRESS_LOOKUP_TOKEN'),
+            secret('ccd-admin-web-oauth2-client-secret', 'ADMIN_WEB_IDAM_SECRET')
+    ]
+]
+
+def secretsForPR = [
+        'sscs-${env}'      : [
+                secret('idam-api', 'IDAM_API_URL'),
+                secret('idam-oauth-user', 'IDAM_OAUTH2_CLIENT_ID'),
+                secret('idam-redirect', 'IDAM_OAUTH2_REDIRECT_URL'),
+                secret('idam-sscs-systemupdate-user', 'IDAM_SSCS_SYSTEMUPDATE_USER'),
+                secret('idam-sscs-systemupdate-password', 'IDAM_SSCS_SYSTEMUPDATE_PASSWORD'),
+                secret('idam-sscs-oauth2-client-secret', 'IDAM_OAUTH2_CLIENT_SECRET'),
+                secret('idam-s2s-api', 'IDAM_S2S_AUTH'),
+                secret('sscs-s2s-secret', 'IDAM_S2S_AUTH_TOTP_SECRET'),
+                secret('s2s-micro', 'IDAM_S2S_AUTH_MICROSERVICE'),
+                secret('docmosis-endpoint', 'PDF_SERVICE_CONVERT_URL'),
+                secret('docmosis-api-key', 'PDF_SERVICE_ACCESS_KEY'),
+                secret('AppInsightsInstrumentationKey', 'APPINSIGHTS_INSTRUMENTATIONKEY'),
+        ],
+        's2s-${env}'      : [
+                secret('microservicekey-ccd-gw', 'CCD_API_GATEWAY_S2S_SECRET'),
+                secret('microservicekey-ccd-data', 'CCD_DATA_STORE_S2S_SECRET'),
+                secret('microservicekey-ccd-admin', 'ADMIN_S2S_KEY'),
+                secret('microservicekey-ccd-definition', 'CCD_DEFINITION_STORE_S2S_SECRET')
+        ],
+        'ccd-${env}'      : [
+                secret('ccd-api-gateway-oauth2-client-secret', 'CCD_API_GATEWAY_IDAM_CLIENT_SECRET'),
+                secret('postcode-info-address-lookup-token', 'ADDRESS_LOOKUP_TOKEN'),
+                secret('ccd-admin-web-oauth2-client-secret', 'ADMIN_WEB_IDAM_SECRET'),
+                secret('idam-data-store-system-user-password', 'IDAM_DATA_STORE_SYSTEM_USER_PASSWORD'),
+                secret('idam-data-store-system-user-username', 'IDAM_DATA_STORE_SYSTEM_USER_USERNAME'),
+                secret('idam-data-store-client-secret', 'IDAM_OAUTH2_DATA_STORE_CLIENT_SECRET')
+        ]
+]
+
+static LinkedHashMap<String, Object> secret(String secretName, String envVar) {
+  [ $class: 'AzureKeyVaultSecret',
+    secretType: 'Secret',
+    name: secretName,
+    version: '',
+    envVariable: envVar
+  ]
+}
+
+def branchesToSync = ['demo', 'ithc', 'perftest']
+
+withPipeline(type, product, component) {
+    def githubApi = new GithubAPI(this)
+    if (env.BRANCH_NAME.startsWith("PR")) {
+        loadVaultSecrets(secretsForPR)
+        env.PREVIEW_CCD_ENABLED = true
+        env.CASE_TYPE = "Benefit"
+        env.CORE_CASE_DATA_API_URL = "http://sscs-tribunals-api-pr-${CHANGE_ID}-ccd-data-store-api"
+        env.CCD_GW_API = "http://sscs-tribunals-api-pr-${CHANGE_ID}-ccd-api-gw"
+        for (label in githubApi.getLabelsbyPattern(env.BRANCH_NAME, "enable_hearings") ) {
+            env.PREVIEW_CCD_ENABLED = false
+            env.CASE_TYPE = "Benefit-${CHANGE_ID}"
+            env.CORE_CASE_DATA_API_URL = "http://ccd-data-store-api-aat.service.core-compute-aat.internal"
+            env.CCD_GW_API = "https://gateway-ccd.aat.platform.hmcts.net"
+        }
+    } else {
+        loadVaultSecrets(secrets)
+    }
+    enableSlackNotifications('#sscs-tech')
+    enableAksStagingDeployment()
+    disableLegacyDeployment()
+    syncBranchesWithMaster(branchesToSync)
+
+    afterSuccess('akschartsinstall'){
+        // Vars needed for AKS testing
+        env.TEST_DOCUMENT_MANAGEMENT_URL = 'http://dm-store-aat.service.core-compute-aat.internal'
+        env.CORE_CASE_DATA_API_URL = "http://ccd-data-store-api-aat.service.core-compute-aat.internal"
+        env.PREVIEW_BRANCH_WITH_LOCAL_CCD = false;
+        if (env.BRANCH_NAME.startsWith("PR") ) {
+            for (label in githubApi.getLabelsbyPattern(env.BRANCH_NAME, "pr-values:ccd") ) {
+                env.CORE_CASE_DATA_API_URL = "https://ccd-data-store-api-sscs-tribunals-api-pr-${CHANGE_ID}.preview.platform.hmcts.net"
+                println """After akschartsinstall Using CORE_CASE_DATA_API_URL: ${env.CORE_CASE_DATA_API_URL}""".stripIndent()
+                env.PREVIEW_BRANCH_WITH_LOCAL_CCD = true;
+            }
+            for (label in githubApi.getLabelsbyPattern(env.BRANCH_NAME, "enable_hearings") ) {
+                env.CORE_CASE_DATA_API_URL = "http://ccd-data-store-api-aat.service.core-compute-aat.internal"
+                env.PREVIEW_BRANCH_WITH_LOCAL_CCD = false;
+            }
+        }
+        println """After akschartsinstall Using CORE_CASE_DATA_API_URL: ${env.CORE_CASE_DATA_API_URL}. - The branch name is ${env.BRANCH_NAME}""".stripIndent()
+    }
+
+    env.PACT_BROKER_FULL_URL = 'https://pact-broker.platform.hmcts.net'
+    onMaster() {
+        enablePactAs([AppPipelineDsl.PactRoles.CONSUMER])
+    }
+    onPR() {
+        enablePactAs([AppPipelineDsl.PactRoles.CONSUMER])
+                        //Disabling due to IDAM OIDC issue. To be investigated under SSCS-10377
+                      //AppPipelineDsl.PactRoles.CONSUMER_DEPLOY_CHECK])
+    }
+}
+

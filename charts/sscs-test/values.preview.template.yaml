@@ -1,0 +1,35 @@
+java:
+  image: ${IMAGE_NAME}
+  ingressHost: ${SERVICE_FQDN}
+  readinessDelay: 45
+  environment:
+    PDF_API_URL: "http://rpe-pdf-service-aat.service.core-compute-aat.internal"
+    CORE_CASE_DATA_API_URL: "http://ccd-data-store-api-aat.service.core-compute-aat.internal"
+    DOCUMENT_MANAGEMENT_URL: "http://dm-store-aat.service.core-compute-aat.internal"
+    IDAM_S2S_AUTH: "http://rpe-service-auth-provider-aat.service.core-compute-aat.internal"
+    IDAM_API_URL: https://idam-api.aat.platform.hmcts.net
+    IDAM_API_JWK_URL: https://idam-api.aat.platform.hmcts.net/jwks
+    CREATE_CCD_ENDPOINT: true
+    SECURE_DOC_STORE_FEATURE: true
+    CASE_DOCUMENT_AM_URL: http://ccd-case-document-am-api-aat.service.core-compute-aat.internal
+    WORK_ALLOCATION_FEATURE: true
+    CASE_ACCESS_MANAGEMENT_FEATURE: true
+    SCHEDULE_LISTING_FEATURE: true
+    SEND_LETTER_SERVICE_ENABLED: "true"
+    SEND_LETTER_SERVICE_BASEURL: "http://rpe-send-letter-service-aat.service.core-compute-aat.internal"
+    SUBSCRIPTION_NAME: "sscs-evidenceshare-subscription-aat"
+    TOPIC_NAME: "sscs-evidenceshare-topic-aat"
+    AMQP_HOST: "sscs-servicebus-aat.servicebus.windows.net"
+    AMQP_USERNAME: "SendAndListenSharedAccessKey"
+    ROBOTICS_EMAIL_FROM: "sscs@hmcts.net"
+    ROBOTICS_EMAIL_TO: "fake"
+    ROBOTICS_EMAIL_SCOTTISH_TO: "fake2"
+    ROBOTICS_EMAIL_PIP_AE_TO: "fake3"
+    ISSUE_GENERIC_LETTER: true
+    HEARING_RECORDING_REQUEST_CASE_UPDATE_V2_ENABLED: true
+
+ccd-def-cleanup:
+  enabled: true
+  change_id: ${CHANGE_ID}
+  case_type_ids:
+    - Benefit

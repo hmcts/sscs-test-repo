@@ -1,0 +1,174 @@
+{
+  "caseCreated": "2018-09-04",
+  "appeal": {
+    "mrnDetails": {
+      "dwpIssuingOffice": "1",
+      "mrnDate": "2018-02-01"
+    },
+    "appellant": {
+      "name": {
+        "title": "Mr",
+        "firstName": "Joe",
+        "lastName": "Bloggs"
+      },
+      "address": {
+        "line1": "123 Hairy Lane",
+        "line2": "Off Hairy Park",
+        "town": "Hairyfield",
+        "county": "Kent",
+        "postcode": "TN32 6PL"
+      },
+      "contact": {
+        "email": "joe@bloggs.com",
+        "mobile": "07411222222"
+      },
+      "identity": {
+        "dob": "1990-02-26",
+        "nino": "AB877533C"
+      },
+      "appointee": {
+        "name": {
+          "title": "Mr",
+          "lastName": "Test",
+          "firstName": "Appointee"
+        },
+        "address": {
+          "line1": "124 Hairy Lane",
+          "line2": "Off Hairy Park",
+          "town": "Hairyfield",
+          "county": "Kent",
+          "postcode": "TS1 1ST"
+        },
+        "contact": {
+          "email": "appointee@test.com",
+          "mobile": "07411222223"
+        },
+        "identity": {
+          "dob": "1995-02-26",
+          "nino": "AB877533B"
+        }
+      },
+      "isAppointee": "Yes",
+      "isAddressSameAsAppointee": null
+    },
+    "benefitType": {
+      "code": "PIP"
+    },
+    "hearingType": "oral",
+    "hearingOptions": {
+      "wantsToAttend": "Yes",
+      "wantsSupport": "Yes",
+      "languageInterpreter": "Yes",
+      "languages": "Arabic",
+      "arrangements": [
+        "signLanguageInterpreter",
+        "hearingLoop"
+      ],
+      "scheduleHearing": "Yes",
+      "excludeDates": [
+        {
+          "value": {
+            "start": "2018-04-04",
+            "end": "2018-04-04"
+          }
+        },
+        {
+          "value": {
+            "start": "2018-04-05",
+            "end": "2018-04-05"
+          }
+        },
+        {
+          "value": {
+            "start": "2018-04-06",
+            "end": "2018-04-06"
+          }
+        }
+      ],
+      "other": "Yes, this..."
+    },
+    "appealReasons": {
+      "reasons": [
+        {
+          "value": {
+            "reason": "aaaaaaaaaa",
+            "description": "aaaaaaaaaa"
+          }
+        },
+        {
+          "value": {
+            "reason": "bbbbbbbbbb",
+            "description": "bbbbbbbbbb"
+          }
+        },
+        {
+          "value": {
+            "reason": "cccccccccc",
+            "description": "cccccccccc"
+          }
+        }
+      ],
+      "otherReasons": "Another reason"
+    },
+    "rep": {
+      "hasRepresentative": "Yes",
+      "organisation": "HP Ltd",
+      "name": {
+        "firstName": "Harry",
+        "lastName": "Potter"
+      },
+      "address": {
+        "line1": "123 Hairy Lane",
+        "line2": "Off Hairy Park",
+        "town": "Town",
+        "county": "County",
+        "postcode": "CM14 4LQ"
+      },
+      "contact": {
+        "email": "harry.potter@wizards.com",
+        "mobile": "07411999999"
+      }
+    },
+    "signer": "Joe Bloggs"
+  },
+  "subscriptions": {
+    "appellantSubscription": {
+      "wantSmsNotifications": "Yes",
+      "tya": "ew2OCHXOL5",
+      "email": "joe@bloggs.com",
+      "mobile": "07411333333",
+      "subscribeEmail": "Yes",
+      "subscribeSms": "Yes"
+    },
+    "appointeeSubscription": {
+      "wantSmsNotifications": "Yes",
+      "tya": "ew2OCHXOL7",
+      "email": "appointee@test.com",
+      "mobile": "07411333333",
+      "subscribeEmail": "Yes",
+      "subscribeSms": "Yes"
+    },
+    "representativeSubscription": {
+      "wantSmsNotifications": "Yes",
+      "tya": "ew2OCHXOL8",
+      "email": "rep@test.com",
+      "mobile": "07411333333",
+      "subscribeEmail": "Yes",
+      "subscribeSms": "Yes"
+    },
+    "jointPartySubscription": {
+      "wantSmsNotifications": "Yes",
+      "tya": "ew2OCHXOL6",
+      "email": "joint@bloggs.com",
+      "mobile": "07411333333",
+      "subscribeEmail": "Yes",
+      "subscribeSms": "Yes"
+    }
+  },
+  "generatedNino": "AB877533C",
+  "generatedSurname": "Bloggs",
+  "generatedEmail": "joe@bloggs.com",
+  "generatedMobile": "07411222222",
+  "generatedDob": "1990-02-26",
+  "evidencePresent": "No"
+}

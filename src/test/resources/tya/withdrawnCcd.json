@@ -1,0 +1,33 @@
+{
+  "caseId" : "1",
+  "caseReference": "SC333/33/33333",
+  "appeal": {
+    "appellant": {
+      "name": {
+        "title": "Mr.",
+        "lastName": "Charlie",
+        "firstName": "C"
+      }
+    },
+    "benefitType": {
+      "code": "PIP"
+    },
+    "hearingOptions": {
+      "wantsToAttend": "Yes"
+    }
+  },
+  "events": [
+    {
+      "value": {
+        "date": "2017-03-02T17:27:50.297",
+        "type": "appealWithdrawn",
+        "description": "Withdrawn"
+      }
+    }
+  ],
+  "subscriptions": {
+    "appellantSubscription": {
+      "tya": "abcde12345"
+    }
+  }
+}

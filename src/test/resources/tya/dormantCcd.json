@@ -1,0 +1,34 @@
+{
+  "caseId" : "1",
+  "caseReference": "SC333/33/33333",
+  "appeal": {
+    "appellant": {
+      "name": {
+        "title": "Mr.",
+        "lastName": "Charlie",
+        "firstName": "C"
+      }
+    },
+    "benefitType": {
+      "code": "PIP",
+      "description": "benefit Type"
+    },
+    "hearingOptions": {
+      "wantsToAttend": "Yes"
+    }
+  },
+  "events": [
+    {
+      "value": {
+        "date": "2099-05-21T12:50:11.437",
+        "type": "appealDormant",
+        "description": "Dormant"
+      }
+    }
+  ],
+  "subscriptions": {
+    "appellantSubscription": {
+      "tya": "abcde12345"
+    }
+  }
+}
