@@ -204,8 +204,8 @@ integration.shouldRunAfter(test)
 
 sonarqube {
     properties {
-        property "sonar.projectName", "SSCS - Tribunals Case Api"
-        property "sonar.projectKey", "SSCSTCA"
+        property "sonar.projectName", "SSCS - Test APi"
+        property "sonar.projectKey", "SSCSTEST"
         property "sonar.coverage.jacoco.xmlReportPaths", "${project.buildDir}/reports/jacoco/test/jacocoTestReport.xml"
         property "sonar.exclusions", "**/CreateCaseException.java," +
                 "src/main/java/uk/gov/hmcts/reform/sscs/domain/**," +
