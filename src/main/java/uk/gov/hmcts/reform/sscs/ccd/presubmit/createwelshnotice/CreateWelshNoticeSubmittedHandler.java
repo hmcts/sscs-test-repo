@@ -42,7 +42,7 @@ public class CreateWelshNoticeSubmittedHandler implements PreSubmitCallbackHandl
     @Override
     public PreSubmitCallbackResponse<SscsCaseData> handle(CallbackType callbackType, Callback<SscsCaseData> callback, String userAuthorisation) {
         final String nextEvent = callback.getCaseDetails().getCaseData().getSscsWelshPreviewNextEvent();
-        log.info("Next event to submit  {}", nextEvent);
+        log.info("Next event to submits  {}", nextEvent);
         callback.getCaseDetails().getCaseData().setSscsWelshPreviewNextEvent(null);
         SscsCaseDetails sscsCaseDetails = ccdService.updateCase(callback.getCaseDetails().getCaseData(), callback.getCaseDetails().getId(),
                 nextEvent, "Create Welsh notice",
