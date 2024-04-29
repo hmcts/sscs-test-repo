@@ -46,7 +46,7 @@ public class CreateWelshNoticeSubmittedHandler implements PreSubmitCallbackHandl
         callback.getCaseDetails().getCaseData().setSscsWelshPreviewNextEvent(null);
         SscsCaseDetails sscsCaseDetails = ccdService.updateCase(callback.getCaseDetails().getCaseData(), callback.getCaseDetails().getId(),
                 nextEvent, "Create Welshi notice",
-                "Create Welsh notice", idamService.getIdamTokens());
+                "Create Welshi notice", idamService.getIdamTokens());
         return new PreSubmitCallbackResponse<>(sscsCaseDetails.getData());
     }
 }
